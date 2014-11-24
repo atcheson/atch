@@ -1,0 +1,5 @@
+|-----> atch: hook
+|-----> before: index rebuild
+|-----> after: vim plugin remove
+|-----> names: test hook 2
+|-----> invoke: echo "test hook 2 running.."
