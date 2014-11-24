@@ -67,26 +67,30 @@ def traverse_hooktree(hook, hooktree, cmd):
         tail = False
     
     if tail:
-        if head in hooktree:
+        if head in hooktree[0]:
             traverse_hooktree(hook, hooktree[0][head], tail)
         else:
             hooktree[0][head] = traverse_hooktree(hook, (dict(), []), tail)
     else:
-        if head in hooktree:
+        if head in hooktree[0]:
             hooktree[0][head].append(hook)
         else:
             hooktree[0][head] = (None, [hook])
-    return hooktree 
+
+    return hooktree
 
 
 def build_hooktree(hookindex, when):
+    hooktree = (dict(), [])
     for hook in hookindex:
+        pdb.set_trace()
+
         try:
             hook_to = sep_commas(hookindex[hook][when])
         except KeyError:
             continue
         for cmd in hook_to:
-           hooktree =  traverse_hooktree(hookindex[hook], (dict(), []) , cmd)
+           hooktree = traverse_hooktree(hookindex[hook], hooktree, cmd)
     return hooktree
 
 
