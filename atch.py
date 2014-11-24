@@ -10,7 +10,8 @@ signal_str = re.compile(r"^.*\|----->(.*)$")
 atch_root = os.path.dirname(os.path.abspath(__file__))
 
 IGNORE_EXTENSIONS = ['.swp']
-VERBOSITY = 1
+VERBOSITY = 0
+ARG_DELIMITER = ':'
 
 def scan_file(filepath):
     atchcmds = dict()
@@ -83,8 +84,6 @@ def traverse_hooktree(hook, hooktree, cmd):
 def build_hooktree(hookindex, when):
     hooktree = (dict(), [])
     for hook in hookindex:
-        pdb.set_trace()
-
         try:
             hook_to = sep_commas(hookindex[hook][when])
         except KeyError:
@@ -115,7 +114,7 @@ def update_index(index_file=path.join(atch_root, 'atchindex')):
 
 
 def get_source_path():
-    filepath = __file__
+    filepath = path.abspath(__file__)
 
     if filepath.endswith('.pyc') and os.path.exists(filepath[:-1]):
         filepath = filepath[:-1]
@@ -143,48 +142,87 @@ def load_index(index_file=path.join(atch_root, 'atchindex')):
         return update_index(index_file)
 
 
-def load_hooks(hooks_file=path.join(atch_root, 'atchhooks')):
-    return load_index(hooks_file)
+def load_hooks(when, hooks_file=path.join(atch_root, 'atchhooks')):
+    try:
+        with open(hooks_file, 'r') as f:
+            return pickle.load(f)
+    except (EOFError, IOError):
+        return update_hooks(when, hooks_file)
 
 
 def usage():
     print("usage info goes here")
 
 
-def cmd_not_found(cmd):
+def cmd_not_found():
     print("deal with missing commands here")
 
 
-def invoke(cmd):
-    inv_str = cmd['invoke']
+def runtime_substitution(inv_str, passed_args):
+    for f in  re.finditer(r'\$(\d+)', inv_str):
+        argument = passed_args[f.groups()[1:]]
+        inv_str = inv_str[:f.start()] + argument + inv_str[:f.end()]
+    return inv_str
+
+
+def invoke(cmd, passed_args):
+    pdb.set_trace()
+    inv_str = runtime_substitution(cmd['invoke'], passed_args)
     vprint(inv_str, 2)
     subprocess.call(inv_str, shell=True)
 
 
+def run_hooks(hooktree, passed_args):
+    for hook in hooktree[1]:
+        invoke(hook, passed_args)
+
+
+def tree_select(tree, key):
+    if key in tree:
+        return tree[key]
+    else:
+        return None
+
+
 def main():
+    
     if len(sys.argv) == 0:
         usage()
         exit(1)
-
+    
+    passed_args = []
     cmd = load_index()
+    beforehooks = load_hooks('before')
+    afterhooks = load_hooks('after')
+    args = sys.argv[1:]
     try:
-        for arg in sys.argv[1:]:
-            cmd = cmd[arg]
+        for arg_no, arg in enumerate(args):
+            if cmd == ARG_DELIMITER:
+                passed_args = args[arg_no + 1:]
+            if cmd and not passed_args:
+                cmd = tree_select(cmd, arg)
+            if not cmd:
+                if not passed_args:
+                    passed_args = args[arg_no:]
+            if afterhooks: 
+                afterhooks = tree_select(afterhooks[0], arg)
+            if beforehooks:
+                beforehooks = tree_select(beforehooks[0], arg)
     except KeyError:
         pass
 
-    try:
-        atch_type = cmd['atch']
-    except (KeyError, IndexError) as e:
-        cmd_not_found(cmd)
-        exit(1)
+    if beforehooks:
+        run_hooks(beforehooks, passed_args)
+    if cmd:
+        invoke(cmd, passed_args)
+    if afterhooks:
+        run_hooks(afterhooks, passed_args)
 
-    if atch_type == 'script':
-        invoke(cmd)
-        exit(0)
+    if not beforehooks and not afterhooks and not cmd:
+        cmd_not_found()
+
+    exit(0)
     
-    cmd_not_found(cmd)
-    exit(1)
 
 if __name__ == '__main__':
     main()
