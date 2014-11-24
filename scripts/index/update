@@ -1,0 +1,3 @@
+|-----> atch: script
+|-----> names: update, rebuild
+|-----> invoke: $atch_fcn "atch.update_index()"
