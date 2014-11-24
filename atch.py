@@ -32,7 +32,7 @@ def build_index(dirpath, atch_type='script'):
     for relpath in os.listdir(dirpath):
         abspath = path.join(dirpath, relpath)
         if path.isfile(abspath):
-            (fn, ext) = path.splitext(abspath)
+            (_, ext) = path.splitext(abspath)
             if ext in IGNORE_EXTENSIONS:
                 continue
 
@@ -80,9 +80,8 @@ def load_index(index_file=path.join(atch_root, 'atchindex')):
     try:
         with open(index_file, 'r') as f:
             return pickle.load(f)
-    except EOFError, IOError:
-        update_index()
-        load_index(index_file)
+    except (EOFError, IOError):
+        return update_index(index_file)
 
 
 def usage():
