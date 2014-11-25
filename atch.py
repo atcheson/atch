@@ -80,7 +80,7 @@ def traverse_hooktree(hook, hooktree, cmd):
             hooktree[0][head] = traverse_hooktree(hook, (dict(), []), tail)
     else:
         if head in hooktree[0]:
-            hooktree[0][head].append(hook)
+            hooktree[0][head][1].append(hook)
         else:
             hooktree[0][head] = (None, [hook])
 
