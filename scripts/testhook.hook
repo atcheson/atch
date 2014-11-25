@@ -1,4 +1,0 @@
-|-----> atch: hook
-|-----> before: vim plugin install, vim plugin remove
-|-----> names: test hook
-|-----> invoke: echo "testhook"

@@ -15,7 +15,8 @@ ARG_DELIMITER = ':'
 SAFE_COMMANDS = ['recover']
 WHEN_SEPCHAR = '_'
 LIST_SEP= ','
-SCRIPTS_DIR = 'scripts'
+SCRIPTS_DIR = 'plugins'
+WILDCARD = '*'
 
 def scan_file(filepath):
     atchcmds = dict()
@@ -86,15 +87,27 @@ def traverse_hooktree(hook, hooktree, cmd):
     return hooktree
 
 
+def get_hooks_from_index(hookindex):
+    hooks = []
+    for subindex_name in hookindex:
+        subindex = hookindex[subindex_name]
+        if 'atch' in subindex:
+            hooks.append(subindex)
+        else:
+            hooks.append(get_hooks_from_index(subindex))
+    return hooks
+
+
 def build_hooktree(hookindex, when):
     hooktree = (dict(), [])
-    for hook in hookindex:
+    hooks = get_hooks_from_index(hookindex)
+    for hook in hooks:
         try:
-            hook_to = sep_list(hookindex[hook][when])
+            hook_to = sep_list(hook[when])
         except KeyError:
             continue
         for cmd in hook_to:
-           hooktree = traverse_hooktree(hookindex[hook], hooktree, cmd)
+            hooktree = traverse_hooktree(hook, hooktree, cmd)
     return hooktree
 
 
@@ -119,7 +132,7 @@ def update_index(index_file=path.join(atch_root, 'index')):
 
 
 def update_subs(when, subs_file=path.join(atch_root, 'substitutions')):
-    vprint("updating substitutions...", 1)
+    vprint("updating " + when + " substitutions...", 1)
     with open(get_when_filename(subs_file, when), 'wb') as f:
         subs_index = build_index(path.join(atch_root, SCRIPTS_DIR) \
                 , atch_type = 'substitution', do_subs=False)
@@ -140,9 +153,13 @@ def get_source_path():
 def run_subs(inv_str, atch_path, when, params=None):
     subtree = load_subs(when)
      
+
+    wild = False
     for key in atch_path:
-        if subtree and key in subtree:
+        if subtree and key in subtree and not wild:
             subtree = subtree[0][key]
+        elif WILDCARD in subtree:
+            wild = True
         else:
             subtree = None
     
@@ -153,7 +170,7 @@ def run_subs(inv_str, atch_path, when, params=None):
         sub_cmd = sub['invoke']
         if params:
             for param in params:
-                sub_cmd +=  " " + param 
+                sub_cmd = sub_cmd +  " " + param 
         p = subprocess.popen(sub['invoke'], \
             stdin = subprocess.PIPE, \
             stdout = subprocess.PIPE, \
@@ -253,12 +270,16 @@ def main():
         update_index()
         update_hooks('before')
         update_hooks('after')
+        update_subs('index')
+        update_subs('runtime')
 
     passed_args = []
     cmd = load_index()
     beforehooks = load_hooks('before')
     afterhooks = load_hooks('after')
     atch_path = []
+    before_wild = False
+    after_wild = False
 
     for arg_no, arg in enumerate(args):
         if cmd and arg in cmd and not passed_args:
@@ -267,13 +288,17 @@ def main():
         else:
             passed_args = args[arg_no:]
 
-        if beforehooks and arg in beforehooks[0]:
+        if beforehooks and arg in beforehooks[0] and not before_wild:
             beforehooks = beforehooks[0][arg]
+        elif WILDCARD in beforehooks:
+            before_wild = True
         else:
             beforehooks = None
 
-        if afterhooks and arg in afterhooks[0]:
+        if afterhooks and arg in afterhooks[0] and not after_wild:
             afterhooks = afterhooks[0][arg]
+        elif WILDCARD in afterhooks:
+            after_wild = True
         else:
             afterhooks = None
 
