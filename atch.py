@@ -156,7 +156,7 @@ def run_subs(inv_str, atch_path, when, params=None):
 
     wild = False
     for key in atch_path:
-        if subtree and key in subtree and not wild:
+        if subtree and (key in subtree) and not wild:
             subtree = subtree[0][key]
         elif WILDCARD in subtree:
             wild = True
