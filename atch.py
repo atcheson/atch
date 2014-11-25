@@ -238,7 +238,7 @@ def cmd_not_found():
     #return new_inv_str
 
 
-def invoke(cmd, atch_path, passed_args, sub):
+def invoke(cmd, passed_args, atch_path, sub):
     try:
         inv_str = cmd['invoke']
     except KeyError:
@@ -253,7 +253,7 @@ def invoke(cmd, atch_path, passed_args, sub):
 
 def run_hooks(hooktree, passed_args):
     for hook in hooktree[1]:
-        invoke(hook, None, passed_args, False)
+        invoke(hook, passed_args, None, False)
 
 
 def main():
@@ -282,8 +282,8 @@ def main():
     after_wild = False
 
     for arg_no, arg in enumerate(args):
-        if cmd and arg in cmd and not passed_args:
-            atch_path.append(args)
+        if cmd and (arg in cmd) and not passed_args:
+            atch_path.append(arg)
             cmd = cmd[arg]
         else:
             passed_args = args[arg_no:]
@@ -305,7 +305,7 @@ def main():
     if beforehooks:
         run_hooks(beforehooks, passed_args)
     if cmd:
-        cmd_run = invoke(cmd, atch_path, passed_args, True)
+        cmd_run = invoke(cmd, passed_args, atch_path, True)
     if afterhooks:
         run_hooks(afterhooks, passed_args)
 
