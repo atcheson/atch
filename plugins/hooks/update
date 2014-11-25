@@ -1,4 +1,4 @@
 |-----> atch: script
 |-----> names: update, rebuild
-|-----> invoke: $atch_fcn "atch.update_hooks()"
+|-----> invoke: $atch_fcn "atch.update_hooks($1)"
 
