@@ -5,18 +5,21 @@ import pdb
 import re
 import pickle
 import subprocess
+import json
 
 signal_str = re.compile(r"^.*\|----->(.*)$") 
 atch_root = os.path.dirname(os.path.abspath(__file__))
 
-IGNORE_EXTENSIONS = ['.swp']
+IGNORE_EXTENSIONS = ['.swp', '.pyc']
 VERBOSITY = 2
 ARG_DELIMITER = ':'
 SAFE_COMMANDS = ['recover']
+ATCH_SOURCE = ['source']
 WHEN_SEPCHAR = '_'
 LIST_SEP= ','
 SCRIPTS_DIR = 'plugins'
 WILDCARD = '*'
+MAX_SUBSTITUTION_ITERATIONS = 10
 
 def scan_file(filepath):
     atchcmds = dict()
@@ -51,11 +54,14 @@ def build_index(dirpath, atch_type, do_subs=True, atch_path=[]):
             atchcmds['abspath'] = abspath
 
             if 'invoke' in atchcmds and do_subs:
-                 atchcmds['invoke'] = run_subs(atchcmds, atch_path, 'index')
-
-            if atch_type in sep_list(atchcmds['atch']):
-                for name in sep_list(atchcmds['names']):
-                    index[name] = atchcmds
+                 atchcmds['invoke'] = \
+                         do_subs(atchcmds, atch_path, 'index', abspath)
+            try:
+                if atch_type in sep_list(atchcmds['atch']):
+                    for name in sep_list(atchcmds['names']):
+                        index[name] = atchcmds
+            except KeyError as e:
+                vprint("no atch_type in: \n" + repr(atchcmds) , 2)
 
         elif path.isdir(abspath):
             subindex = \
@@ -108,7 +114,7 @@ def build_hooktree(hookindex, when):
             continue
         for cmd in hook_to:
             hooktree = traverse_hooktree(hook, hooktree, cmd)
-    return hooktree[0]
+    return hooktree
 
 
 
@@ -135,7 +141,7 @@ def update_subs(when, subs_file=path.join(atch_root, 'substitutions')):
     vprint("updating " + when + " substitutions...", 1)
     with open(get_when_filename(subs_file, when), 'wb') as f:
         subs_index = build_index(path.join(atch_root, SCRIPTS_DIR) \
-                , atch_type = 'substitution', do_subs=False)
+                , atch_type = 'substitution', do_subs=True)
         subs = build_hooktree(subs_index, when)
         pickle.dump(subs, f)
         return subs
@@ -150,33 +156,42 @@ def get_source_path():
     return filepath
 
 
-def run_subs(inv_str, atch_path, when, params=None):
+def build_subst_info(inv_str, params, abspath, subst_path):
+    info = dict()
+    info['inv_str'] = inv_str
+    info['params'] = params
+    info['abspath'] = abspath
+    info['subst_path'] = subst_path
+    return json.dumps(info)
+
+
+def run_subs(inv_str, atch_path, when, params=None, abspath=None):
     subtree = load_subs(when)
-     
+    if not subtree:
+        return inv_str
 
     wild = False
     for key in atch_path:
-        if subtree and (key in subtree) and not wild:
+        if subtree[0] and (key in subtree[0]) and not wild:
             subtree = subtree[0][key]
-        elif subtree and (WILDCARD in subtree):
+        elif subtree[0] and (WILDCARD in subtree[0]):
             wild = True
-        else:
+            subtree = subtree[0][WILDCARD]
+        elif not wild:
             subtree = None
-    
+
     if not subtree or not subtree[1]:
         return inv_str
 
     for sub in subtree[1]:
-        sub_cmd = sub['invoke']
-        if params:
-            for param in params:
-                sub_cmd = sub_cmd +  " " + param 
-        p = subprocess.popen(sub['invoke'], \
+        p = subprocess.Popen(sub['invoke'], \
             stdin = subprocess.PIPE, \
             stdout = subprocess.PIPE, \
             shell = True)
-        p.communicate(inv_str)
-        inv_str = p.communicate()
+        p.stdin.write(build_subst_info(inv_str, params, abspath, sub['abspath']))
+        p.stdin.close()
+        p.wait()
+        inv_str = p.stdout.read()
 
     #inv_str = cmd['invoke']
     #inv_str = re.sub(r'\$atch_fcn "(.*)"', \
@@ -187,8 +202,23 @@ def run_subs(inv_str, atch_path, when, params=None):
     #inv_str = re.sub(r" \./", ' ' + path.dirname(cmd['abspath']) + '/', inv_str)
     #inv_str = re.sub(r"\$atch_root", atch_root, inv_str)
 
-    vprint(inv_str, 3)
     return inv_str
+
+
+def do_subs(inv_str, atch_path, when, params=None, abspath=None):
+    old_inv_str = None
+    count = 0
+    while old_inv_str != inv_str and count < MAX_SUBSTITUTION_ITERATIONS:
+        count += 1
+        old_inv_str = inv_str
+        inv_str = run_subs(inv_str, 
+                           atch_path, 
+                           when, 
+                           params, 
+                           abspath)
+
+    return inv_str
+
 
 
 def load_index(index_file=path.join(atch_root, 'index')):
@@ -245,7 +275,13 @@ def invoke(cmd, passed_args, atch_path, sub):
         return False
 
     if sub:
-      inv_str = run_subs(cmd['invoke'], atch_path, 'runtime', passed_args)
+        inv_str = do_subs(cmd['invoke'], 
+                          atch_path, 
+                          'runtime', 
+                          passed_args, 
+                          cmd['abspath'])
+
+
 
     vprint(inv_str, 2)
     subprocess.call(inv_str, shell=True)
@@ -257,21 +293,25 @@ def run_hooks(hooktree, passed_args):
 
 
 def main():
-    
+
     if len(sys.argv) == 0:
         usage()
         exit(1)
     
     args = sys.argv[1:]
     
-    safe = False
+    did_something = False
     if ' '.join(args) in SAFE_COMMANDS:
-        safe = True
-        update_index()
-        update_hooks('before')
-        update_hooks('after')
+        did_something = True
         update_subs('index')
         update_subs('runtime')
+        update_hooks('before')
+        update_hooks('after')
+        update_index()
+
+    if ' '.join(args) in ATCH_SOURCE:
+        did_something = True
+        sys.stdout.write(get_source_path())
 
     passed_args = []
     cmd = load_index()
@@ -303,13 +343,15 @@ def main():
             afterhooks = None
 
     if beforehooks:
+        did_something = True
         run_hooks(beforehooks, passed_args)
     if cmd:
-        cmd_run = invoke(cmd, passed_args, atch_path, True)
+        did_something = invoke(cmd, passed_args, atch_path, True) or did_something
     if afterhooks:
+        did_something = True
         run_hooks(afterhooks, passed_args)
 
-    if not beforehooks and not afterhooks and not cmd_run and not safe:
+    if not did_something:
         cmd_not_found()
 
     exit(0)
