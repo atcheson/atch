@@ -137,14 +137,27 @@ def update_index(index_file=path.join(atch_root, 'index')):
         return index
 
 
-def update_subs(when, subs_file=path.join(atch_root, 'substitutions')):
-    vprint("updating " + when + " substitutions...", 1)
-    with open(get_when_filename(subs_file, when), 'wb') as f:
+def update_subs_singlepass(when, subs_file):
+     with open(get_when_filename(subs_file, when), 'wb') as f:
         subs_index = build_index(path.join(atch_root, SCRIPTS_DIR) \
                 , atch_type = 'substitution', do_subs=True)
         subs = build_hooktree(subs_index, when)
         pickle.dump(subs, f)
         return subs
+
+
+def update_subs(when, subs_file=path.join(atch_root, 'substitutions')):
+    vprint("updating " + when + " substitutions...", 1)
+    subs = update_subs_singlepass(when, subs_file)
+    if when == 'index':
+        count = 0
+        old_subs = None
+        while old_subs != subs: # TODO: ensure this is a real deep comparison
+            if count == MAX_SUBSTITUTION_ITERATIONS:
+                raise Exception("max substitutions reached")
+            old_subs = subs
+            subs = update_subs_singlepass(when, subs_file)
+    return subs
 
 
 def get_source_path():
@@ -184,11 +197,17 @@ def run_subs(inv_str, atch_path, when, params=None, abspath=None):
         return inv_str
 
     for sub in subtree[1]:
+
         p = subprocess.Popen(sub['invoke'], \
             stdin = subprocess.PIPE, \
             stdout = subprocess.PIPE, \
             shell = True)
-        p.stdin.write(build_subst_info(inv_str, params, abspath, sub['abspath']))
+
+        p.stdin.write(build_subst_info(inv_str, \
+                                       params, \
+                                       abspath, \
+                                       sub['abspath']))
+
         p.stdin.close()
         p.wait()
         inv_str = p.stdout.read()
@@ -208,8 +227,10 @@ def run_subs(inv_str, atch_path, when, params=None, abspath=None):
 def do_subs(inv_str, atch_path, when, params=None, abspath=None):
     old_inv_str = None
     count = 0
-    while old_inv_str != inv_str and count < MAX_SUBSTITUTION_ITERATIONS:
+    while old_inv_str != inv_str:
         count += 1
+        if count == MAX_SUBSTITUTION_ITERATIONS:
+            raise Exception("max substitutions reached")
         old_inv_str = inv_str
         inv_str = run_subs(inv_str, 
                            atch_path, 
