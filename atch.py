@@ -108,7 +108,7 @@ def build_hooktree(hookindex, when):
             continue
         for cmd in hook_to:
             hooktree = traverse_hooktree(hook, hooktree, cmd)
-    return hooktree
+    return hooktree[0]
 
 
 
