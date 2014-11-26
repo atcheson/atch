@@ -41,7 +41,7 @@ def sep_list(str_list):
     return [x.strip() for x in str_list.split(LIST_SEP)]
    
 
-def build_index(dirpath, atch_type, do_subs=True, atch_path=[]):
+def build_index(dirpath, atch_type, atch_path, subs=None):
     index = dict()
     for relpath in os.listdir(dirpath):
         abspath = path.join(dirpath, relpath)
@@ -52,10 +52,10 @@ def build_index(dirpath, atch_type, do_subs=True, atch_path=[]):
 
             atchcmds = scan_file(abspath)
             atchcmds['abspath'] = abspath
-
-            if 'invoke' in atchcmds and do_subs:
-                 atchcmds['invoke'] = \
-                         do_subs(atchcmds, atch_path, 'index', abspath)
+            
+            if 'invoke' in atchcmds:
+                atchcmds['invoke'] = \
+                    do_subs(atchcmds, atch_path, 'index', abspath, subs)
             try:
                 if atch_type in sep_list(atchcmds['atch']):
                     for name in sep_list(atchcmds['names']):
@@ -65,7 +65,7 @@ def build_index(dirpath, atch_type, do_subs=True, atch_path=[]):
 
         elif path.isdir(abspath):
             subindex = \
-                    build_index(abspath, atch_type, atch_path.append(relpath))
+                    build_index(abspath, atch_type, atch_path + [relpath])
             if subindex:
                 index[path.basename(abspath)] = subindex
     return index
@@ -122,7 +122,7 @@ def update_hooks(when, hooks_file=path.join(atch_root, 'hooks')):
     vprint("updating " + when + " hooks...", 1)
     with open(get_when_filename(hooks_file, when), 'wb') as f:
         hook_index = build_index(path.join(atch_root, SCRIPTS_DIR) \
-                , atch_type = 'hook')
+                , atch_type = 'hook', atch_path = [])
         hooks = build_hooktree(hook_index, when)
         pickle.dump(hooks, f)
         return hooks
@@ -132,15 +132,15 @@ def update_index(index_file=path.join(atch_root, 'index')):
     vprint("updating index...", 1)
     with open(index_file, 'wb') as f:
         index = build_index(path.join(atch_root, SCRIPTS_DIR) \
-                , atch_type = 'script')
+                , atch_type = 'script', atch_path = [])
         pickle.dump(index, f)
         return index
 
 
-def update_subs_singlepass(when, subs_file):
+def update_subs_singlepass(when, subs_file, subs):
      with open(get_when_filename(subs_file, when), 'wb') as f:
         subs_index = build_index(path.join(atch_root, SCRIPTS_DIR) \
-                , atch_type = 'substitution', do_subs=True)
+                , atch_type = 'substitution', atch_path = [])
         subs = build_hooktree(subs_index, when)
         pickle.dump(subs, f)
         return subs
@@ -148,15 +148,17 @@ def update_subs_singlepass(when, subs_file):
 
 def update_subs(when, subs_file=path.join(atch_root, 'substitutions')):
     vprint("updating " + when + " substitutions...", 1)
-    subs = update_subs_singlepass(when, subs_file)
+    old_subs = ({}, [])
+    subs = update_subs_singlepass(when, subs_file, old_subs)
     if when == 'index':
         count = 0
-        old_subs = None
+        pdb.set_trace()
         while old_subs != subs: # TODO: ensure this is a real deep comparison
+            count += 1
             if count == MAX_SUBSTITUTION_ITERATIONS:
                 raise Exception("max substitutions reached")
             old_subs = subs
-            subs = update_subs_singlepass(when, subs_file)
+            subs = update_subs_singlepass(when, subs_file, old_subs)
     return subs
 
 
@@ -178,8 +180,11 @@ def build_subst_info(inv_str, params, abspath, subst_path):
     return json.dumps(info)
 
 
-def run_subs(inv_str, atch_path, when, params=None, abspath=None):
-    subtree = load_subs(when)
+def run_subs(inv_str, atch_path, when, params=None, abspath=None, subs=None):
+    if not subs:
+        subtree = load_subs(when)
+    else:
+        subtree = subs
     if not subtree:
         return inv_str
 
@@ -224,7 +229,7 @@ def run_subs(inv_str, atch_path, when, params=None, abspath=None):
     return inv_str
 
 
-def do_subs(inv_str, atch_path, when, params=None, abspath=None):
+def do_subs(inv_str, atch_path, when, params=None, abspath=None, subs=None):
     old_inv_str = None
     count = 0
     while old_inv_str != inv_str:
@@ -236,7 +241,8 @@ def do_subs(inv_str, atch_path, when, params=None, abspath=None):
                            atch_path, 
                            when, 
                            params, 
-                           abspath)
+                           abspath,
+                           subs)
 
     return inv_str
 
