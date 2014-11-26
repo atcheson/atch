@@ -94,7 +94,7 @@ def get_hooks_from_index(hookindex):
         if 'atch' in subindex:
             hooks.append(subindex)
         else:
-            hooks.append(get_hooks_from_index(subindex))
+            hooks = hooks + get_hooks_from_index(subindex)
     return hooks
 
 
@@ -158,7 +158,7 @@ def run_subs(inv_str, atch_path, when, params=None):
     for key in atch_path:
         if subtree and (key in subtree) and not wild:
             subtree = subtree[0][key]
-        elif WILDCARD in subtree:
+        elif subtree and (WILDCARD in subtree):
             wild = True
         else:
             subtree = None
@@ -290,14 +290,14 @@ def main():
 
         if beforehooks and arg in beforehooks[0] and not before_wild:
             beforehooks = beforehooks[0][arg]
-        elif WILDCARD in beforehooks:
+        elif beforehooks and  (WILDCARD in beforehooks):
             before_wild = True
         else:
             beforehooks = None
 
         if afterhooks and arg in afterhooks[0] and not after_wild:
             afterhooks = afterhooks[0][arg]
-        elif WILDCARD in afterhooks:
+        elif afterhooks and (WILDCARD in afterhooks):
             after_wild = True
         else:
             afterhooks = None
