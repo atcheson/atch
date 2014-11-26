@@ -1,4 +1,0 @@
-|-----> atch: substitution
-|-----> index: *
-|-----> invoke: echo "test substitution"
-|-----> names: atch_root
